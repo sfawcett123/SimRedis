@@ -1,0 +1,208 @@
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.EventLog;
+using StackExchange.Redis;
+using System.ComponentModel;
+using System.Net;
+
+
+namespace SimRedis
+{
+    public class RedisDataEventArgs : EventArgs
+    {
+        public Dictionary<string,string> AircraftData = new Dictionary<string,string>();
+    }
+    public class SimRedis : IDisposable
+    {// EventLogSettings is used to configure the event log settings for the logger
+        private static EventLogSettings myEventLogSettings = new EventLogSettings
+        {
+            SourceName = _sourceName,
+            LogName = _logName
+        };
+
+        private const string _sourceName = "Simulator Service";
+        private const string _logName = "Application";
+        // Implementing the Dispose method to fix CS0535
+        // This class is designed to simulate Redis operations.
+        // It currently does not hold any unmanaged resources, but the Dispose method is required by the interface.
+        private ConnectionMultiplexer? _redis;
+        private IDatabase? db = null;
+        // Updated initialization of ILoggerFactory to use the correct overload of LoggerFactory.Create
+        private ILoggerFactory factory = LoggerFactory.Create(builder =>
+        {
+            builder.AddConsole();
+            builder.AddDebug();
+            builder.AddEventLog(myEventLogSettings);
+        });
+        private ILogger? logger = null;
+        private string server = "";
+        private int port = 0;
+        private System.Timers.Timer? connectionTimer , readTimer;
+        private const int CONNECT_TIME = 1000;
+        
+        public int READTIME
+        {
+            get
+            {
+                return (int)(readTimer?.Interval ?? 100); // Explicitly cast 'double' to 'int'
+            }
+            set
+            {
+                if (readTimer != null)
+                {
+                    readTimer.Interval = value;
+                }
+            }
+        }
+
+        // Fix for CS8050: Move the initializer to the constructor
+        private int _readTime = 100; // Backing field for READTIME
+
+        public event EventHandler<RedisDataEventArgs>? RedisDataRecieved;
+        public bool Enabled
+        {
+            get
+            {
+                return connectionTimer?.Enabled ?? false;
+            }
+            set
+            {
+                if (connectionTimer != null) connectionTimer.Enabled = value;
+                if (readTimer != null) readTimer.Enabled = value;
+            }
+        }
+        public void Dispose()
+        {
+            // Add cleanup logic here if necessary
+            _redis?.Dispose();
+            db = null;
+        }
+        public SimRedis( string server, int port)
+        {
+            // Default constructor that initializes the logger and connects to Redis
+            Initialize(server , port);
+            READTIME = _readTime; // Set the initial read time
+        }
+        public SimRedis(string server, int port, ILoggerFactory loggerFactory)
+        {
+            // Default constructor that initializes the logger and connects to Redis
+            this.factory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory), "Logger factory cannot be null.");
+            Initialize(server, port);
+            READTIME = _readTime; // Set the initial read time
+        }
+        public void Initialize( string server, int port)
+        {
+            this.logger = factory.CreateLogger("Redis Listener");
+
+            this.server = server;
+            this.port = port;
+
+            connectionTimer = new System.Timers.Timer()
+            {
+                Enabled = true,
+                AutoReset = true,
+                Interval = CONNECT_TIME
+            };
+            connectionTimer.Start();
+            connectionTimer.Elapsed += onConnected;
+
+            readTimer = new System.Timers.Timer()
+            {
+                Enabled = true,
+                AutoReset = true,
+                Interval = READTIME
+            };
+            readTimer.Stop();
+            readTimer.Elapsed += onGetData;
+        }
+        protected virtual void OnRedisData(RedisDataEventArgs e)
+        {
+            EventHandler<RedisDataEventArgs>? handler = RedisDataRecieved;
+            if (handler != null)
+            {
+                handler(this, e);
+            }
+        }
+        private void onGetData( object? sender , System.Timers.ElapsedEventArgs e )
+        {
+            if( sender  == null ) return;
+            
+            logger?.LogInformation("Reading data from Redis");
+
+            try
+            {
+                RedisDataEventArgs args = new RedisDataEventArgs();
+                if (_redis == null || db == null)
+                {
+                    logger?.LogInformation("Database not available");
+                    throw new InvalidOperationException("Redis connection is not established.");
+                }
+
+                foreach (var endpoint in _redis.GetEndPoints() )
+                {
+                    var server = _redis.GetServer(endpoint);
+                    logger?.LogInformation($"Connected to Redis server at {server.EndPoint}");
+                    foreach (var key in server.Keys())
+                    {
+                        logger?.LogInformation($"Reading key: {key}");
+                        string? value = db.StringGet(key);
+                        if (value != null)
+                        {
+                            args.AircraftData.Add(key.ToString() ?? string.Empty, value);
+                        }
+                    }
+                }
+                OnRedisData(args);
+
+            }
+            catch {
+                logger?.LogWarning("Redis connection lost");
+                this.readTimer?.Stop();
+                this.connectionTimer?.Start();
+            }
+
+        }
+        private void onConnected(object? sender, System.Timers.ElapsedEventArgs e)
+        {
+            int port = 0;
+            try
+            {
+                port = this.port;
+            }
+            catch (Exception ex) {
+                logger?.LogError($"{ex.Message} - Cannot convert {this.port} to int");
+                return;
+            }
+
+            try
+            {
+                if (db == null)
+                {
+                    logger?.LogInformation($"Connecting to Redis at {this.server}:{port}");
+                    _redis = ConnectionMultiplexer.Connect($"{this.server}:{port}");
+                    db = _redis.GetDatabase();
+                    readTimer?.Start();
+                    if (connectionTimer != null)
+                    {
+                        connectionTimer.Stop();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogInformation($"Redis Not available {ex.Message}");
+                return;
+            }
+        }
+        public void write( string key , string value )
+        {
+            if (db == null)
+            {
+                logger?.LogInformation("Database not available");
+                return;
+            }
+
+            logger?.LogInformation($"Writing {key} = {value} to Redis");
+            db.StringSet(key, value);
+        }
+    }
+}
