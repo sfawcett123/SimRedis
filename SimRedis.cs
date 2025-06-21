@@ -34,11 +34,45 @@ namespace SimRedis
             builder.AddEventLog(myEventLogSettings);
         });
         private ILogger? logger = null;
-        private string server = "";
-        private int port = 0;
         private System.Timers.Timer? connectionTimer , readTimer;
         private const int CONNECT_TIME = 1000;
         
+        public int port
+        {
+            get
+            {
+                return _port;
+            }
+            set
+            {
+                if (value > 0 && value < 65536)
+                {
+                    _port = value;
+                }
+                else
+                {
+                    throw new ArgumentOutOfRangeException(nameof(value), "Port number must be between 1 and 65535.");
+                }
+            }
+        }       
+        public string server
+        {
+            get
+            {
+                return _server;
+            }
+            set
+            {
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    _server = value;
+                }
+                else
+                {
+                    throw new ArgumentException("Server name cannot be null or empty.", nameof(value));
+                }
+            }
+        }
         public int READTIME
         {
             get
@@ -56,6 +90,8 @@ namespace SimRedis
 
         // Fix for CS8050: Move the initializer to the constructor
         private int _readTime = 100; // Backing field for READTIME
+        private int _port = 6379;
+        private string _server = "localhost";
 
         public event EventHandler<RedisDataEventArgs>? RedisDataRecieved;
         public bool Enabled
@@ -76,25 +112,30 @@ namespace SimRedis
             _redis?.Dispose();
             db = null;
         }
-        public SimRedis( string server, int port)
+        public SimRedis()
         {
             // Default constructor that initializes the logger and connects to Redis
-            Initialize(server , port);
+            Yaml r = new Yaml(Path.Combine(Environment.CurrentDirectory, "settings", "redis.yaml"));
+            server = r.server ?? "localhost";
+
+           if (!int.TryParse(r.port.ToString(), out _port))
+            {
+                port = 6379; // Default port if parsing fails
+            }
+
+            Initialize();
             READTIME = _readTime; // Set the initial read time
         }
         public SimRedis(string server, int port, ILoggerFactory loggerFactory)
         {
             // Default constructor that initializes the logger and connects to Redis
             this.factory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory), "Logger factory cannot be null.");
-            Initialize(server, port);
+            Initialize();
             READTIME = _readTime; // Set the initial read time
         }
-        public void Initialize( string server, int port)
+        public void Initialize()
         {
             this.logger = factory.CreateLogger("Redis Listener");
-
-            this.server = server;
-            this.port = port;
 
             connectionTimer = new System.Timers.Timer()
             {
