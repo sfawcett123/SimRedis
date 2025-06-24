@@ -47,14 +47,15 @@ namespace SimRedis
             }
             // Load the YAML file
             string yaml = File.ReadAllText(filePath);
-            Debug.WriteLine($"==> YAML file loaded successfully. {yaml}");
 
             data = Deserializer(yaml);
 
         }
         public DataDefinition Deserializer( string Data )
         {
-           var deserializer = new DeserializerBuilder().Build();
+           var deserializer = new DeserializerBuilder()
+                .WithCaseInsensitivePropertyMatching()
+                .Build();
 
            return deserializer.Deserialize<DataDefinition>(Data.ToString());
         }
