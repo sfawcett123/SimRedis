@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.EventLog;
 using StackExchange.Redis;
-using System.Reflection;
+using System.Text.Json;
 
 
 namespace SimRedis
@@ -297,7 +297,7 @@ namespace SimRedis
                 return;
             }
         }
-        public void write(string key, string value)
+        public void write(string key, int index, string value)
         {
             if (!Connected)
             {
@@ -305,8 +305,37 @@ namespace SimRedis
                 return;
             }
 
-            logger?.LogInformation($"Writing {key} = {value} to Redis");
-            db?.StringSet(key, value);
+            Dictionary<string, string> data; 
+
+            string v = db?.StringGet(key).ToString() ?? string.Empty;
+            logger?.LogDebug($"Reading key: {key} => {v}");
+
+            // Fix for CS8600: Ensure 'v' is not null before deserialization
+            if (!string.IsNullOrEmpty(v))
+            {
+                data = JsonSerializer.Deserialize<Dictionary<string, string>>(v) ?? new Dictionary<string, string>();
+                if (data.ContainsKey(index.ToString()))
+                {
+                    logger?.LogDebug($"Updating existing key: {index}");
+                    data[index.ToString()] = value;
+                    string send = JsonSerializer.Serialize(data);
+                    db?.StringSet(key, send);
+                }
+                else
+                {
+                    logger?.LogDebug($"Adding new key: {index}");
+                    data.Add(index.ToString(), value);
+                    string send = JsonSerializer.Serialize(data);
+                    db?.StringSet(key, send);
+                }
+            }
+            else
+            {
+                logger?.LogDebug($"Key {key} does not exist. Creating new key with index {index}");
+                data = new Dictionary<string, string> { { index.ToString(), value } };
+                string send = JsonSerializer.Serialize(data);
+                db?.StringSet(key, send);
+            }
         }
 
         public void Purge()
@@ -323,10 +352,10 @@ namespace SimRedis
                 foreach (var endpoint in _redis.GetEndPoints())
                 {
                     var server = _redis.GetServer(endpoint);
-                    logger?.LogDebug($"Connected to Redis server at {server.EndPoint}");
+                    logger?.LogInformation($"Connected to Redis server at {server.EndPoint}");
                     foreach (var key in server.Keys())
                     {
-                        logger?.LogDebug($"Deleting key: {key}");
+                        logger?.LogInformation($"Deleting key: {key}");
                         db.KeyDelete(key);
                     }
                 }
