@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.EventLog;
 using StackExchange.Redis;
+using System.Reflection;
 
 
 namespace SimRedis
@@ -27,7 +28,7 @@ namespace SimRedis
             builder.AddEventLog(myEventLogSettings);
         });
         private ILogger? logger = null;
-        private System.Timers.Timer? connectionTimer , readTimer;
+        private System.Timers.Timer? connectionTimer, readTimer;
 
         private const int CONNECT_TIME = 5000;
         private const int REDIS_TIMEOUT = 50000;
@@ -49,7 +50,7 @@ namespace SimRedis
                     throw new ArgumentOutOfRangeException(nameof(value), "Port number must be between 1 and 65535.");
                 }
             }
-        }       
+        }
         public string server
         {
             get
@@ -96,7 +97,9 @@ namespace SimRedis
         private int _port = 6379;
         private string _server = "localhost";
 
-        public event EventHandler<RedisDataEventArgs>? RedisDataRecieved;
+        public event EventHandler<RedisDataEventArgs>? DataRecieved;
+        public event EventHandler? OnConnected;
+        public event EventHandler? OnDisconnected;
         public bool Enabled
         {
             get
@@ -105,7 +108,7 @@ namespace SimRedis
             }
             set
             {
-                if( value )
+                if (value)
                 {
                     if (connectionTimer == null)
                     {
@@ -133,7 +136,7 @@ namespace SimRedis
             Yaml r = new Yaml(Path.Combine(Environment.CurrentDirectory, "settings", "redis.yaml"));
             server = r.server ?? "localhost";
 
-           if (!int.TryParse(r.port.ToString(), out _port))
+            if (!int.TryParse(r.port.ToString(), out _port))
             {
                 port = 6379; // Default port if parsing fails
             }
@@ -173,16 +176,32 @@ namespace SimRedis
         }
         protected virtual void OnRedisData(RedisDataEventArgs e)
         {
-            EventHandler<RedisDataEventArgs>? handler = RedisDataRecieved;
+            EventHandler<RedisDataEventArgs>? handler = DataRecieved;
             if (handler != null)
             {
                 handler(this, e);
             }
         }
-        private void onGetData( object? sender , System.Timers.ElapsedEventArgs e )
+        protected virtual void OnConnectedEvent()
         {
-            if( sender  == null ) return;
-            
+            EventHandler? handler = OnConnected;
+            if (handler != null)
+            {
+                handler(this, EventArgs.Empty);
+            }
+        }
+        protected virtual void OnDisconnectedEvent()
+        {
+            EventHandler? handler = OnDisconnected;
+            if (handler != null)
+            {
+                handler(this, EventArgs.Empty);
+            }
+        }
+        private void onGetData(object? sender, System.Timers.ElapsedEventArgs e)
+        {
+            if (sender == null) return;
+
             try
             {
                 RedisDataEventArgs args = new RedisDataEventArgs();
@@ -192,7 +211,7 @@ namespace SimRedis
                     throw new InvalidOperationException("Redis connection is not established.");
                 }
 
-                foreach (var endpoint in _redis.GetEndPoints() )
+                foreach (var endpoint in _redis.GetEndPoints())
                 {
                     var server = _redis.GetServer(endpoint);
                     logger?.LogDebug($"Connected to Redis server at {server.EndPoint}");
@@ -209,10 +228,12 @@ namespace SimRedis
                 OnRedisData(args);
 
             }
-            catch {
+            catch
+            {
                 logger?.LogWarning("Redis connection lost");
                 this.readTimer?.Stop();
                 this.connectionTimer?.Start();
+                OnDisconnectedEvent();
             }
 
         }
@@ -249,11 +270,12 @@ namespace SimRedis
                 {
                     logger?.LogInformation($"Connecting to Redis at {this.server}:{port}");
                     _redis = ConnectionMultiplexer.Connect($"{this.server}:{port},ConnectTimeout={REDIS_TIMEOUT}");
-                    
+
                     db = _redis.GetDatabase();
                     if (db == null)
                     {
                         logger?.LogError("Failed to connect to Redis database.");
+                        OnDisconnectedEvent();
                         return;
                     }
                     logger?.LogInformation($"Connected to Redis at {this.server}:{port}");
@@ -262,6 +284,7 @@ namespace SimRedis
                     {
                         logger?.LogInformation($"Stopping Connection Timer");
                         connectionTimer.Stop();
+                        OnConnectedEvent();
                     }
                 }
             }
@@ -270,10 +293,11 @@ namespace SimRedis
                 logger?.LogInformation($"Redis Not available {ex.Message}");
                 connectionTimer.Start();
                 readTimer?.Stop();
+                OnDisconnectedEvent();
                 return;
             }
         }
-        public void write( string key , string value )
+        public void write(string key, string value)
         {
             if (!Connected)
             {
@@ -283,6 +307,38 @@ namespace SimRedis
 
             logger?.LogInformation($"Writing {key} = {value} to Redis");
             db?.StringSet(key, value);
+        }
+
+        public void Purge()
+        {
+            try
+            {
+                RedisDataEventArgs args = new RedisDataEventArgs();
+                if (_redis == null || db == null)
+                {
+                    logger?.LogInformation("Purge - Internal Database not available");
+                    throw new InvalidOperationException("Redis connection is not established.");
+                }
+
+                foreach (var endpoint in _redis.GetEndPoints())
+                {
+                    var server = _redis.GetServer(endpoint);
+                    logger?.LogDebug($"Connected to Redis server at {server.EndPoint}");
+                    foreach (var key in server.Keys())
+                    {
+                        logger?.LogDebug($"Deleting key: {key}");
+                        db.KeyDelete(key);
+                    }
+                }
+                logger?.LogInformation("Purge completed successfully.");
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError($"Purge failed: {ex.Message}");
+                this.readTimer?.Stop();
+                this.connectionTimer?.Start();
+                OnDisconnectedEvent();
+            }
         }
     }
 }
