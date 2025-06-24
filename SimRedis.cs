@@ -1,8 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.EventLog;
 using StackExchange.Redis;
-using System.ComponentModel;
-using System.Net;
 
 
 namespace SimRedis
@@ -18,15 +16,10 @@ namespace SimRedis
             SourceName = _sourceName,
             LogName = _logName
         };
-
         private const string _sourceName = "Simulator Service";
         private const string _logName = "Application";
-        // Implementing the Dispose method to fix CS0535
-        // This class is designed to simulate Redis operations.
-        // It currently does not hold any unmanaged resources, but the Dispose method is required by the interface.
         private ConnectionMultiplexer? _redis;
         private IDatabase? db = null;
-        // Updated initialization of ILoggerFactory to use the correct overload of LoggerFactory.Create
         private ILoggerFactory factory = LoggerFactory.Create(builder =>
         {
             builder.AddConsole();
@@ -35,8 +28,10 @@ namespace SimRedis
         });
         private ILogger? logger = null;
         private System.Timers.Timer? connectionTimer , readTimer;
-        private const int CONNECT_TIME = 1000;
-        
+
+        private const int CONNECT_TIME = 5000;
+        private const int REDIS_TIMEOUT = 50000;
+
         public int port
         {
             get
@@ -87,6 +82,14 @@ namespace SimRedis
                 }
             }
         }
+        public bool Connected
+        {
+            get
+            {
+                // Check if the Redis connection is established
+                return _redis != null && _redis.IsConnected && db != null;
+            }
+        }
 
         // Fix for CS8050: Move the initializer to the constructor
         private int _readTime = 100; // Backing field for READTIME
@@ -102,8 +105,20 @@ namespace SimRedis
             }
             set
             {
-                if (connectionTimer != null) connectionTimer.Enabled = value;
-                if (readTimer != null) readTimer.Enabled = value;
+                if( value )
+                {
+                    if (connectionTimer == null)
+                    {
+                        connectionTimer = new System.Timers.Timer(CONNECT_TIME);
+                        connectionTimer.Elapsed += onConnected;
+                    }
+                    connectionTimer.Start();
+                }
+                else
+                {
+                    connectionTimer?.Stop();
+                    readTimer?.Stop();
+                }
             }
         }
         public void Dispose()
@@ -145,6 +160,7 @@ namespace SimRedis
             };
             connectionTimer.Start();
             connectionTimer.Elapsed += onConnected;
+            logger?.LogInformation($"Waiting for connection to Redis at {this.server}:{this.port}");
 
             readTimer = new System.Timers.Timer()
             {
@@ -167,24 +183,22 @@ namespace SimRedis
         {
             if( sender  == null ) return;
             
-            logger?.LogInformation("Reading data from Redis");
-
             try
             {
                 RedisDataEventArgs args = new RedisDataEventArgs();
                 if (_redis == null || db == null)
                 {
-                    logger?.LogInformation("Database not available");
+                    logger?.LogInformation("Internal Database not available");
                     throw new InvalidOperationException("Redis connection is not established.");
                 }
 
                 foreach (var endpoint in _redis.GetEndPoints() )
                 {
                     var server = _redis.GetServer(endpoint);
-                    logger?.LogInformation($"Connected to Redis server at {server.EndPoint}");
+                    logger?.LogDebug($"Connected to Redis server at {server.EndPoint}");
                     foreach (var key in server.Keys())
                     {
-                        logger?.LogInformation($"Reading key: {key}");
+                        logger?.LogDebug($"Reading key: {key}");
                         string? value = db.StringGet(key);
                         if (value != null)
                         {
@@ -205,11 +219,26 @@ namespace SimRedis
         private void onConnected(object? sender, System.Timers.ElapsedEventArgs e)
         {
             int port = 0;
+
+            if (sender?.GetType() != typeof(System.Timers.Timer))
+            {
+                logger?.LogWarning("Sender is not of type Timer.");
+                return;
+            }
+
+            System.Timers.Timer timer = (System.Timers.Timer)sender ?? throw new ArgumentNullException(nameof(sender), "Sender cannot be null.");
+            if (timer != connectionTimer)
+            {
+                logger?.LogWarning("Unexpected timer event received.");
+                return;
+            }
+
             try
             {
                 port = this.port;
             }
-            catch (Exception ex) {
+            catch (Exception ex)
+            {
                 logger?.LogError($"{ex.Message} - Cannot convert {this.port} to int");
                 return;
             }
@@ -219,11 +248,19 @@ namespace SimRedis
                 if (db == null)
                 {
                     logger?.LogInformation($"Connecting to Redis at {this.server}:{port}");
-                    _redis = ConnectionMultiplexer.Connect($"{this.server}:{port}");
+                    _redis = ConnectionMultiplexer.Connect($"{this.server}:{port},ConnectTimeout={REDIS_TIMEOUT}");
+                    
                     db = _redis.GetDatabase();
+                    if (db == null)
+                    {
+                        logger?.LogError("Failed to connect to Redis database.");
+                        return;
+                    }
+                    logger?.LogInformation($"Connected to Redis at {this.server}:{port}");
                     readTimer?.Start();
                     if (connectionTimer != null)
                     {
+                        logger?.LogInformation($"Stopping Connection Timer");
                         connectionTimer.Stop();
                     }
                 }
@@ -231,19 +268,21 @@ namespace SimRedis
             catch (Exception ex)
             {
                 logger?.LogInformation($"Redis Not available {ex.Message}");
+                connectionTimer.Start();
+                readTimer?.Stop();
                 return;
             }
         }
         public void write( string key , string value )
         {
-            if (db == null)
+            if (!Connected)
             {
-                logger?.LogInformation("Database not available");
+                logger?.LogInformation("Unable to Write. Database not available");
                 return;
             }
 
             logger?.LogInformation($"Writing {key} = {value} to Redis");
-            db.StringSet(key, value);
+            db?.StringSet(key, value);
         }
     }
 }
