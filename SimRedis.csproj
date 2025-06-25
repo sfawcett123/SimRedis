@@ -13,11 +13,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="assets\airplane.png" />
     <None Remove="settings\redis.yaml" />
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="airplane.ico" />
+    <Content Include="assets\airplane.png">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
     <Content Include="settings\redis.yaml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
