@@ -50,8 +50,8 @@ jobs:
 
     # Create the NuGet package in the folder from the environment variable NuGetDirectory
 
-    - name: Move to the SimListener directory
-      run: cd ${{ github.workspace }}/SimListener
+    - name: Move to the SimRedis directory
+      run: cd ${{ github.workspace }}/SimRedis
 
     - name: Restore dependencies 
       run:  dotnet restore
