@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Platforms>AnyCPU;x64</Platforms>
-    <ApplicationIcon>airplane.ico</ApplicationIcon>
+    <ApplicationIcon>assets\airplane.ico</ApplicationIcon>
     <Title>Simulator Redis Interface</Title>
     <PackageIcon>airplane.png</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -13,13 +13,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="assets\airplane.ico" />
     <None Remove="settings\redis.yaml" />
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="airplane.ico" />
     <Content Include="assets\airplane.ico">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="assets\airplane.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <Content Include="settings\redis.yaml">
@@ -28,10 +29,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\Test\assets\airplane.png">
-      <Pack>True</Pack>
-      <PackagePath>\</PackagePath>
-    </None>
     <None Include="..\Test\LICENSE.txt">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
@@ -49,6 +46,13 @@
     <PackageReference Include="Microsoft.Extensions.Logging.EventLog" Version="9.0.6" />
     <PackageReference Include="StackExchange.Redis" Version="2.8.41" />
     <PackageReference Include="YamlDotNet" Version="16.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="assets\airplane.png">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
   </ItemGroup>
 
 </Project>
