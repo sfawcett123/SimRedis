@@ -4,10 +4,8 @@
     <TargetFramework>net8.0-windows7.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Platforms>AnyCPU;x64</Platforms>
-    <ApplicationIcon>assets\airplane.ico</ApplicationIcon>
+    <Platforms>x64</Platforms>
     <Title>Simulator Redis Interface</Title>
-    <PackageIcon>assets\airplane.png</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
   </PropertyGroup>
@@ -17,12 +15,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="assets\airplane.ico">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="assets\airplane.png">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
     <Content Include="settings\redis.yaml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -53,10 +45,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="assets\airplane.png">
-      <Pack>True</Pack>
-      <PackagePath>\</PackagePath>
-    </None>
     <None Update="LICENSE.txt">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>

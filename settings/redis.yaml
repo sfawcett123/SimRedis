@@ -1,4 +1,4 @@
 ﻿---
 
-server: "controller"
+server: "cache.home"
 port: 6379
