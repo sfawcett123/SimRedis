@@ -297,6 +297,11 @@ namespace SimRedis
                 return;
             }
         }
+        public void write(string key, string value)
+        {
+            this.write(key, 0, value);
+        }
+
         public void write(string key, int index, string value)
         {
             if (!Connected)
