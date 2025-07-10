@@ -83,7 +83,7 @@ namespace SimRedis
                 }
             }
         }
-        public bool Connected
+        public bool isConnected
         {
             get
             {
@@ -214,7 +214,7 @@ namespace SimRedis
                 foreach (var endpoint in _redis.GetEndPoints())
                 {
                     var server = _redis.GetServer(endpoint);
-                    logger?.LogDebug($"Connected to Redis server at {server.EndPoint}");
+                    logger?.LogDebug($"isConnected to Redis server at {server.EndPoint}");
                     foreach (var key in server.Keys())
                     {
                         logger?.LogDebug($"Reading key: {key}");
@@ -278,7 +278,7 @@ namespace SimRedis
                         OnDisconnectedEvent();
                         return;
                     }
-                    logger?.LogInformation($"Connected to Redis at {this.server}:{port}");
+                    logger?.LogInformation($"isConnected to Redis at {this.server}:{port}");
                     readTimer?.Start();
                     if (connectionTimer != null)
                     {
@@ -304,7 +304,7 @@ namespace SimRedis
 
         public void write(string key, int index, string value)
         {
-            if (!Connected)
+            if (!isConnected)
             {
                 logger?.LogInformation("Unable to Write. Database not available");
                 return;
@@ -357,7 +357,7 @@ namespace SimRedis
                 foreach (var endpoint in _redis.GetEndPoints())
                 {
                     var server = _redis.GetServer(endpoint);
-                    logger?.LogInformation($"Connected to Redis server at {server.EndPoint}");
+                    logger?.LogInformation($"isConnected to Redis server at {server.EndPoint}");
                     foreach (var key in server.Keys())
                     {
                         logger?.LogInformation($"Deleting key: {key}");
